@@ -19,6 +19,17 @@ The following scribble shows how the set-up looks like
 The cover letter can be found here: https://docs.google.com/document/d/1Dp36lDI9tpCZjjxI3JvbPpNC2fIU2MppGMoLcWywbTM/edit?usp=sharing
 
 
+## Current state
+
+- [x] Setup
+- [x] Integrate PoseNet model
+- [x] Working proof of concept with basic game mechanics
+- [ ] Integrate Cast SDK
+- [ ] Iterate, Improve and polish game mechanics
+- [ ] Publish
+
+![Proof of concept](proof-of-concept.gif)
+
 ## Acknowledgements
 
 Parts of the code are based on the [official TensorFlow Lite PoseNet example](https://github.com/tensorflow/examples/tree/master/lite/examples/posenet/android)

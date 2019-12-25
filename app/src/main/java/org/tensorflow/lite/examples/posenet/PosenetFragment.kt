@@ -40,10 +40,12 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Observer
+import com.github.markushi.posenet.GameController
 import com.github.markushi.posenet.MainActivity
 import com.github.markushi.posenet.R
-import com.github.markushi.posenet.domain.Stickman
-import com.github.markushi.posenet.widget.StickmanView
+import com.github.markushi.posenet.domain.Pose
+import com.github.markushi.posenet.widget.PoseView
 import org.tensorflow.lite.examples.posenet.lib.BodyPart
 import org.tensorflow.lite.examples.posenet.lib.Person
 import org.tensorflow.lite.examples.posenet.lib.Posenet
@@ -93,9 +95,15 @@ class PosenetFragment : Fragment(), ActivityCompat.OnRequestPermissionsResultCal
     /** A [SurfaceView] for camera preview.   */
     private var surfaceView: SurfaceView? = null
 
-    private lateinit var debugView: TextView
+    private lateinit var stateView: TextView
 
-    private lateinit var personView: StickmanView
+    private lateinit var personView: PoseView
+
+    private lateinit var wallView: PoseView
+
+    private lateinit var intro: TextView
+
+    private val gameModel = GameController()
 
     /** A [CameraCaptureSession] for camera preview.   */
     private var captureSession: CameraCaptureSession? = null
@@ -210,10 +218,45 @@ class PosenetFragment : Fragment(), ActivityCompat.OnRequestPermissionsResultCal
     ): View? = inflater.inflate(R.layout.fragment_posenet, container, false)
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        debugView = view.findViewById(R.id.debug) as TextView
-        personView = view.findViewById(R.id.person) as StickmanView
+        personView = view.findViewById(R.id.person) as PoseView
+        wallView = view.findViewById(R.id.wall) as PoseView
         surfaceView = view.findViewById(R.id.surfaceView)
+        stateView = view.findViewById(R.id.state)
+        intro = view.findViewById(R.id.intro)
         surfaceHolder = surfaceView!!.holder
+
+        personView.color = ContextCompat.getColor(view.context, R.color.accent)
+        personView.strokeWidth = 24f
+
+        wallView.strokeWidth = 40f
+        wallView.color = Color.GRAY
+
+        gameModel.state.observe(this, Observer<GameController.State> {
+            it?.let { state ->
+                when (state) {
+                    GameController.State.Ready -> {
+                        intro.visibility = View.VISIBLE
+                        stateView.text = "00:00\n0 Points"
+                    }
+                    is GameController.State.Running -> {
+                        intro.visibility = View.GONE
+                        stateView.text = "${state.remainingTimeText}\n${state.pointsText}"
+                        wallView.pose = state.wallPose
+                        personView.pose = state.userPose
+                    }
+                    is GameController.State.Over -> {
+                        intro.visibility = View.VISIBLE
+                        wallView.pose = null
+                        stateView.text = "Game Over\n${state.pointsText} Points"
+                    }
+                }
+            }
+        })
+    }
+
+    override fun onDestroyView() {
+        gameModel.stopGame()
+        super.onDestroyView()
     }
 
     override fun onResume() {
@@ -255,6 +298,8 @@ class PosenetFragment : Fragment(), ActivityCompat.OnRequestPermissionsResultCal
             if (grantResults.size != 1 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
                 ErrorDialog.newInstance(getString(R.string.request_permission))
                     .show(childFragmentManager, FRAGMENT_DIALOG)
+            } else {
+                openCamera()
             }
         } else {
             super.onRequestPermissionsResult(requestCode, permissions, grantResults)
@@ -502,41 +547,6 @@ class PosenetFragment : Fragment(), ActivityCompat.OnRequestPermissionsResultCal
         val left = (screenWidth - bitmap.width) / 2.0f
         val top = (screenHeight - bitmap.height) / 2.0f
         canvas.drawBitmap(bitmap, left, top, paint)
-
-        person?.let { p ->
-            // Draw key points over the image.
-            for (keyPoint in p.keyPoints) {
-                if (keyPoint.score > minConfidence) {
-                    val position = keyPoint.position
-                    val adjustedX: Float = left + position.x.toFloat() * widthRatio
-                    val adjustedY: Float = top + position.y.toFloat() * heightRatio
-                    canvas.drawCircle(adjustedX, adjustedY, circleRadius, paint)
-                }
-            }
-
-            for (line in bodyJoints) {
-                if (
-                    (p.keyPoints[line.first.ordinal].score > minConfidence) and
-                    (p.keyPoints[line.second.ordinal].score > minConfidence)
-                ) {
-                    canvas.drawLine(
-                        left + p.keyPoints[line.first.ordinal].position.x.toFloat() * widthRatio,
-                        top + p.keyPoints[line.first.ordinal].position.y.toFloat() * heightRatio,
-                        left + p.keyPoints[line.second.ordinal].position.x.toFloat() * widthRatio,
-                        top + p.keyPoints[line.second.ordinal].position.y.toFloat() * heightRatio,
-                        paint
-                    )
-                }
-            }
-
-            activity?.runOnUiThread {
-                debugView.text = "Score: %.2f\nDevice: %s\nTime: %.2f ms".format(
-                    p.score,
-                    posenet.device,
-                    posenet.lastInferenceTimeNanos * 1.0f / 1_000_000
-                )
-            }
-        }
     }
 
     /** Process image using Posenet library.   */
@@ -547,7 +557,10 @@ class PosenetFragment : Fragment(), ActivityCompat.OnRequestPermissionsResultCal
 
         lastPerson?.let {
             if (it.score > 0.8f) {
-                personView.stickman = Stickman.from(it)
+                personView.pose = Pose.from(it)
+                personView.pose?.let { stickman ->
+                    gameModel.onUserPose(stickman)
+                }
             }
         }
 

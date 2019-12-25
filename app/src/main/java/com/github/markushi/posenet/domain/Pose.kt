@@ -1,50 +1,81 @@
 package com.github.markushi.posenet.domain
 
+import android.util.Log
 import org.tensorflow.lite.examples.posenet.lib.BodyPart
 import org.tensorflow.lite.examples.posenet.lib.Person
 import org.tensorflow.lite.examples.posenet.lib.Position
+import java.util.*
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.pow
 import kotlin.math.sqrt
 
-class Stickman(
-    val headX: Float,
-    val headY: Float,
+class Pose(
+    val head: PositionFloat,
     val headRadius: Float,
-    val shoulderX: Float,
-    val shoulderY: Float,
-    val hipX: Float,
-    val hipY: Float,
-    val leftElbowX: Float,
-    val leftElbowY: Float,
-    val leftWristX: Float,
-    val leftWristY: Float,
-    val leftKneeX: Float,
-    val leftKeeY: Float,
-    val leftAnkleX: Float,
-    val leftAnkleY: Float,
-    val rightElbowX: Float,
-    val rightElbowY: Float,
-    val rightWristX: Float,
-    val rightWristY: Float,
-    val rightKneeX: Float,
-    val rightKeeY: Float,
-    val rightAnkleX: Float,
-    val rightAnkleY: Float
+    val shoulder: PositionFloat,
+    val hip: PositionFloat,
+    val leftElbow: PositionFloat,
+    val leftWrist: PositionFloat,
+    val leftKnee: PositionFloat,
+    val leftAnkle: PositionFloat,
+    val rightElbow: PositionFloat,
+    val rightWrist: PositionFloat,
+    val rightKnee: PositionFloat,
+    val rightAnkle: PositionFloat
 ) {
+
+    private fun positions() = listOf(
+        head,
+        shoulder,
+        hip,
+        leftElbow,
+        leftWrist,
+        leftKnee,
+        rightElbow,
+        rightWrist,
+        rightKnee
+    )
+
+    fun diffTo(other: Pose): Float {
+        val positions = positions()
+        val otherPositions = other.positions()
+
+        var totalDistance = 0.0f
+        for (i in 0 until positions.size) {
+            totalDistance += distance2d(positions[i], otherPositions[i])
+        }
+        return totalDistance / positions.size
+    }
 
     companion object {
 
         /**
          * Euclidean distance in 2d space
          */
-        private fun distance2d(x0: Float, y0: Float, x1: Float, y1: Float) =
-            sqrt((x1 - x0).pow(2) + (y1 - y0).pow(2))
+        private fun distance2d(p0: PositionFloat, p1: PositionFloat) =
+            sqrt((p1.x - p0.x).pow(2) + (p1.y - p0.y).pow(2))
+
+        fun from(vararg floats: Float): Pose {
+            return Pose(
+                PositionFloat(floats[0], floats[1]),
+                floats[2],
+                PositionFloat(floats[3], floats[4]),
+                PositionFloat(floats[5], floats[6]),
+                PositionFloat(floats[7], floats[8]),
+                PositionFloat(floats[9], floats[10]),
+                PositionFloat(floats[11], floats[12]),
+                PositionFloat(floats[13], floats[14]),
+                PositionFloat(floats[15], floats[16]),
+                PositionFloat(floats[17], floats[18]),
+                PositionFloat(floats[19], floats[20]),
+                PositionFloat(floats[21], floats[22])
+            )
+        }
 
         fun from(
             person: Person
-        ): Stickman? {
+        ): Pose? {
             var nose: Position? = null
             var leftShoulder: Position? = null
             var rightShoulder: Position? = null
@@ -139,55 +170,46 @@ class Stickman(
                     yOffset,
                     scaleX,
                     scaleY,
-                    postTranslateX
+                    postTranslateX,
+                    0f
                 )
 
             val headSize = distance2d(
-                transformer.x(centerHip),
-                transformer.y(centerHip),
-                transformer.x(centerShoulder),
-                transformer.y(centerShoulder)
+                transformer.position(centerHip),
+                transformer.position(centerShoulder)
             ) / 4f
 
-            // mirror output
-            return Stickman(
-                transformer.x(nose),
-                transformer.y(nose),
+            return Pose(
+                transformer.position(nose),
                 headSize,
-                transformer.x(centerShoulder),
-                transformer.y(centerShoulder),
-                transformer.x(centerHip),
-                transformer.y(centerHip),
-                transformer.x(leftElbow!!),
-                transformer.y(leftElbow),
-                transformer.x(leftWrist!!),
-                transformer.y(leftWrist),
-                transformer.x(leftKnee!!),
-                transformer.y(leftKnee),
-                transformer.x(leftAnkle!!),
-                transformer.y(leftAnkle),
-                transformer.x(rightElbow!!),
-                transformer.y(rightElbow),
-                transformer.x(rightWrist!!),
-                transformer.y(rightWrist),
-                transformer.x(rightKnee!!),
-                transformer.y(rightKnee),
-                transformer.x(rightAnkle!!),
-                transformer.y(rightAnkle)
+                transformer.position(centerShoulder),
+                transformer.position(centerHip),
+                transformer.position(leftElbow!!),
+                transformer.position(leftWrist!!),
+                transformer.position(leftKnee!!),
+                transformer.position(leftAnkle!!),
+                transformer.position(rightElbow!!),
+                transformer.position(rightWrist!!),
+                transformer.position(rightKnee!!),
+                transformer.position(rightAnkle!!)
             )
         }
     }
 
     class Transformer(
-        private val xOffset: Float,
-        private val yOffset: Float,
+        private val preTranslateX: Float,
+        private val preTranslateY: Float,
         private val scaleX: Float,
         private val scaleY: Float,
-        private val postTranslateX: Float
+        private val postTranslateX: Float,
+        private val postTranslateY: Float
     ) {
-        fun x(position: Position) = ((position.x + xOffset) * scaleX) + postTranslateX
-        fun y(position: Position) = (position.y + yOffset) * scaleY
+        private fun x(position: Position) = ((position.x + preTranslateX) * scaleX) + postTranslateX
+        private fun y(position: Position) = ((position.y + preTranslateY) * scaleY) + postTranslateY
+        fun position(position: Position) = PositionFloat(x(position), y(position))
     }
+
+    class PositionFloat(val x: Float, val y: Float)
 
     class MinMaxInt {
         var min: Int = Int.MAX_VALUE
